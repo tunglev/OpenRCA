@@ -102,9 +102,15 @@ def _control_loop(objective, plan, ap, bp, logger, max_step, max_turn, kernel):
             analysis = response['analysis']
             instruction = response['instruction']
             completed = response['completed']
+            if isinstance(completed, str):
+                normalized = completed.strip().lower()
+                if normalized in ("true", "false"):
+                    completed = normalized == "true"
+            if not isinstance(completed, bool):
+                raise ValueError("The 'completed' field must be a boolean or a 'true'/'false' string.")
             logger.info('-'*80 + '\n' + f"### Step[{step+1}]\nAnalysis: {analysis}\nInstruction: {instruction}" + '\n' + '-'*80)
 
-            if completed == "True":
+            if completed:
                 prompt.append({'role': 'assistant', 'content': response_raw})
                 prompt.append({'role': 'user', 'content': summary.format(objective=objective,
                                                                                 cand=bp.cand)})

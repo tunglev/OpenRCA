@@ -108,6 +108,48 @@ class ExecutorTests(unittest.TestCase):
         self.assertTrue(result[2])
         self.assertEqual(self.kernel.run_cell.call_count, 2)
 
+    def test_controller_recognizes_completion_without_executing_more_code(self):
+        ap, bp = mock.Mock(rules="rules"), mock.Mock(schema="schema", cand="candidates")
+        for completed in (True, "True", "true", "TRUE", " TrUe "):
+            with self.subTest(completed=completed):
+                step = json.dumps({"analysis": "done", "instruction": "answer", "completed": completed})
+                with mock.patch.object(controller, "get_chat_completion", side_effect=[step, "final answer"]) as api, \
+                        mock.patch.object(controller, "execute_act") as execute:
+                    result = controller._control_loop("q", "", ap, bp, self.logger, 25, 3, self.kernel)
+                self.assertEqual(result[0], "final answer")
+                self.assertEqual(result[1], [])
+                self.assertEqual(api.call_count, 2)
+                execute.assert_not_called()
+
+    def test_controller_false_completion_continues_investigation(self):
+        ap, bp = mock.Mock(rules="rules"), mock.Mock(schema="schema", cand="candidates")
+        done = json.dumps({"analysis": "done", "instruction": "answer", "completed": True})
+        for completed in (False, "False", "false", "FALSE", " FaLsE "):
+            with self.subTest(completed=completed):
+                step = json.dumps({"analysis": "continue", "instruction": "analyze", "completed": completed})
+                with mock.patch.object(controller, "get_chat_completion", side_effect=[step, done, "final answer"]) as api, \
+                        mock.patch.object(controller, "execute_act", return_value=("code", "result", True, [])) as execute:
+                    result = controller._control_loop("q", "", ap, bp, self.logger, 25, 3, self.kernel)
+                self.assertEqual(result[0], "final answer")
+                self.assertEqual(len(result[1]), 1)
+                self.assertEqual(api.call_count, 3)
+                execute.assert_called_once()
+
+    def test_controller_invalid_completion_requests_correction(self):
+        ap, bp = mock.Mock(rules="rules"), mock.Mock(schema="schema", cand="candidates")
+        done = json.dumps({"analysis": "done", "instruction": "answer", "completed": True})
+        for completed in (None, 0, 1, [], {}, "yes", "", "falsehood"):
+            with self.subTest(completed=completed):
+                step = json.dumps({"analysis": "invalid", "instruction": "analyze", "completed": completed})
+                with mock.patch.object(controller, "get_chat_completion", side_effect=[step, done, "final answer"]) as api, \
+                        mock.patch.object(controller, "execute_act") as execute:
+                    result = controller._control_loop("q", "", ap, bp, self.logger, 25, 3, self.kernel)
+                self.assertEqual(result[0], "final answer")
+                self.assertEqual(api.call_count, 3)
+                execute.assert_not_called()
+                retry_messages = api.call_args_list[1].kwargs["messages"]
+                self.assertTrue(any("The 'completed' field must be" in m["content"] for m in retry_messages))
+
     def test_controller_stops_after_fatal_sandbox_error(self):
         ap, bp = mock.Mock(rules="rules"), mock.Mock(schema="schema", cand="candidates")
         step = json.dumps({"analysis": "start", "instruction": "analyze", "completed": "False"})
