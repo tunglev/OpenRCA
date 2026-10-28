@@ -1,31 +1,48 @@
+"""Chat completions for OpenAI and Gemini's OpenAI-compatible API."""
+
 import json
 import os
 import time
 from typing import Any, Dict, Optional
 
 _DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "config.json")
+# Preserve the profile used by existing config.json files.
 _MODEL_KEY = "gemini3pro"
+_GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 def _load_config() -> Dict[str, Any]:
     config_path = os.environ.get("API_CONFIG_PATH") or _DEFAULT_CONFIG_PATH
     if not os.path.isabs(config_path):
         config_path = os.path.join(os.path.dirname(__file__), "..", config_path)
     
-    with open(config_path, "r") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         meta_config = json.load(f)
-    
-    model_config = meta_config.get(_MODEL_KEY, {})
-    
+
+    model_key = meta_config.get("active_model", _MODEL_KEY)
+    model_config = meta_config.get(model_key)
+    if not isinstance(model_config, dict):
+        raise ValueError(f"Config must contain a model profile named {model_key!r}.")
+
+    # Existing profiles without a provider keep their OpenAI-compatible behavior.
+    provider = model_config.get("provider", "openai").lower()
+    if provider not in ("openai", "gemini"):
+        raise ValueError(f"Unsupported API provider: {provider!r}. Use 'openai' or 'gemini'.")
+
+    base_url = model_config.get("base_url")
+    if provider == "gemini" and not base_url:
+        base_url = _GEMINI_API_BASE
+
     return {
-        "MODEL": model_config.get("model", _MODEL_KEY),
+        "MODEL": model_config.get("model", model_key),
         "API_KEY": model_config.get("api_key"),
-        "API_BASE": model_config.get("base_url"),
+        "API_BASE": base_url,
         "TEMPERATURE": model_config.get("temperature", 0.0),
     }
 
 configs = _load_config()
 
 def get_chat_completion(messages, temperature: Optional[float] = None, tools=None, parallel_tool_calls: bool = False):
+    """Return response text using the selected provider and the existing SDK."""
     from openai import OpenAI
 
     if temperature is None:

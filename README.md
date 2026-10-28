@@ -100,13 +100,48 @@ python -m main.evaluate \
 
 ### 🚩 Reproduction
 
-To reproduce results in the paper, please first setup your API configurations before running OpenRCA's baselines. Taking OpenAI as an example, you can configure `rca/api_config.yaml` file as follows:
+To reproduce results in the paper, first configure `config.json` in the repository root before running OpenRCA's baselines. For OpenAI:
 
-```yaml
-SOURCE:   "OpenAI"
-MODEL:    "gpt-4o-2024-05-13"
-API_KEY:  "sk-xxxxxxxxxxxxxx"
+```json
+{
+    "active_model": "openai",
+    "openai": {
+        "provider": "openai",
+        "model": "gpt-4o-2024-05-13",
+        "api_key": "YOUR_OPENAI_API_KEY",
+        "temperature": 0.0
+    }
+}
 ```
+
+For Gemini:
+
+```json
+{
+    "active_model": "gemini",
+    "gemini": {
+        "provider": "gemini",
+        "model": "YOUR_GEMINI_MODEL_ID",
+        "api_key": "YOUR_GEMINI_API_KEY",
+        "temperature": 0.0
+    }
+}
+```
+
+Set `model` to the exact API model ID available to your account. Both providers use
+the existing `openai` dependency. Gemini uses Google's
+[OpenAI-compatible endpoint](https://ai.google.dev/gemini-api/docs/openai),
+`https://generativelanguage.googleapis.com/v1beta/openai/`, automatically.
+An optional `base_url` in either profile overrides the endpoint, including for an
+OpenAI-compatible proxy. OpenAI uses the SDK's default endpoint when `base_url`
+is omitted.
+
+You can keep both profiles in the same file and switch by changing `active_model`
+to the desired profile name. For existing configurations, `active_model` defaults
+to `gemini3pro`, and a missing `provider` defaults to `openai`, preserving custom
+OpenAI-compatible endpoints. `temperature` defaults to `0.0`, and a temperature
+passed to `get_chat_completion` overrides it. `API_CONFIG_PATH` can select another
+config file; relative paths are resolved from the repository root.
 
 Then, run the following commands for result reproduction:
 
